@@ -1,0 +1,80 @@
+from pyspark.sql import SparkSession
+from pyspark.sql.types import *
+from pyspark.sql.functions import *
+
+
+
+def readDataframeFromFileWithSchema(sparksession, inputFile, inputSchema, header = False, delimiter = ",") :
+outputDF = (sparksession
+.read
+.format("csv")
+.option("header", header)
+.option("sep", delimiter)
+.option("nullValue", "null")
+.schema(inputSchema)
+.load(inputFile)
+)
+return outputDF
+
+
+
+def readDataframeFromFile(sparksession, inputFile, header = False, delimiter = ",") :
+outputDF = (sparksession
+.read
+.format("csv")
+.option("header", header)
+.option("sep", delimiter)
+.option("inferSchema", True)
+.load(inputFile)
+)
+return outputDF
+
+
+
+if __name__ == '__main__':
+orderdetailFile = "/usr/training/data/cmdata/orderdetail.csv"
+productFile = "/usr/training/data/cmdata/product.csv"
+orderFile = "/usr/training/data/cmdata/order.csv"
+
+
+
+orderdetailSchemaDDL = "orderNumber int, productCode string, qty int, unitPrice float, orderLineNumber int"
+orderSchemaDDL = "orderNumber int, orderDate Date, requiredDate Date, shippedDate Date, status string, comments string, customerNumber int"
+
+
+
+spark = SparkSession \
+.builder \
+.appName("Spark Project") \
+.master("local[2]") \
+.getOrCreate()
+
+
+
+orderdetailDF = readDataframeFromFileWithSchema(spark, orderdetailFile, orderdetailSchemaDDL, header=True)
+orderDF = readDataframeFromFileWithSchema(spark, orderFile, orderSchemaDDL, header=True)
+productDF = readDataframeFromFile(spark, productFile, header=True)
+# orderDF.filter(orderDF.comments == "null").show()
+# na functions
+# orderDF = orderDF.na.fill("Not Available", subset=["comments", "status"])
+# orderDF = orderDF.na.drop(how="any", subset = ["orderDate", "requiredDate", "shippedDate"])
+
+
+
+orderSummaryDF = (orderDF
+.join(orderdetailDF, "orderNumber", "left_outer")
+.join(productDF, "productCode", "inner")
+.select("orderNumber", "orderDate", "productCode", "productLine", "qty", "unitPrice", "customerNumber")
+.filter(col("qty") > 0)
+)
+
+
+
+orderSummaryDF.show(5)
+# orderDF.show()
+# productDF.printSchema()
+# productDF.show(5)
+
+
+
+spark.stop()
