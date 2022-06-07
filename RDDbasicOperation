@@ -1,0 +1,37 @@
+from pyspark.sql import SparkSession
+
+ 
+
+if __name__ == '__main__':
+    spark = SparkSession \
+        .builder \
+        .appName("Spark Project") \
+        .master("local[2]") \
+        .getOrCreate()
+
+ 
+
+    orderdetailRDD = spark.sparkContext.textFile("/usr/training/data/cmdata/orderdetail.csv")
+    odHeader = orderdetailRDD.first()
+    print("File Header : " + odHeader)
+    orderdetailRDD1 = orderdetailRDD.filter(lambda x : x != odHeader)
+    # Find the total sales for each product code
+    orderdetailRDD2 = (orderdetailRDD1
+                       .map(lambda x : x.split(","))
+                       .map(lambda x : (x[1], int(x[2]) * float(x[3])))
+                       )
+    orderdetailRDD3 = (orderdetailRDD2
+                       # (S18_1749, (43434, 343443, 3355))
+                       .reduceByKey(lambda x,y : x + y)
+                       .mapValues(lambda x : round(x))
+                       .sortBy(lambda x : x[1], ascending=True)
+                       .map(lambda x : x[0] + "," + str(x[1]))
+                       )
+
+ 
+
+    orderdetailRDD3.saveAsTextFile("output/productSummary")
+    print(orderdetailRDD1.take(5))
+    print(orderdetailRDD2.take(5))
+    print(orderdetailRDD3.take(5))
+    spark.stop()
