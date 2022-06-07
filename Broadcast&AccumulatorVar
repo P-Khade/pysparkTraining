@@ -1,0 +1,119 @@
+from pyspark.sql import SparkSession
+
+
+
+def getRDDFromFile(inputFile) :
+inputRDD = spark.sparkContext.textFile(inputFile)
+rddHeader = inputRDD.first()
+print("File Header : " + rddHeader)
+outputRDD = (inputRDD
+.filter(lambda x : x != rddHeader)
+.map(lambda x: x.split(","))
+)
+return outputRDD
+
+
+
+if __name__ == '__main__':
+orderdetailFile = "/usr/training/data/cmdata/orderdetail.csv"
+productFile = "/usr/training/data/cmdata/product.csv"
+
+
+
+spark = SparkSession \
+.builder \
+.appName("Spark Project") \
+.master("local[2]") \
+.getOrCreate()
+
+
+
+orderdetailRDD = getRDDFromFile(orderdetailFile)
+
+
+
+# orderdetailRDD = spark.sparkContext.textFile("/usr/training/data/cmdata/orderdetail.csv")
+# odHeader = orderdetailRDD.first()
+# print("File Header : " + odHeader)
+# orderdetailRDD1 = orderdetailRDD.filter(lambda x : x != odHeader)
+
+
+
+# Find the total sales for each product code
+orderdetailRDD2 = (orderdetailRDD
+.map(lambda x : (x[1], int(x[2]) * float(x[3])))
+)
+orderdetailRDD3 = (orderdetailRDD2
+# (S18_1749, (43434, 343443, 3355))
+.reduceByKey(lambda x,y : x + y)
+.mapValues(lambda x : round(x))
+.sortBy(lambda x : x[1], ascending=True)
+.map(lambda x : x[0] + "," + str(x[1]))
+)
+
+
+
+# using groupByKey()
+orderdetailRDD4 = (orderdetailRDD2
+.groupByKey()
+# ('key1', Iterable(val1,val2, val3...))
+.mapValues(lambda x: round(sum(x)))
+.sortBy(lambda x: x[1], ascending=True)
+.map(lambda x: x[0] + "," + str(x[1]))
+)
+
+
+
+orderdetailRDD5 = (orderdetailRDD2
+.aggregateByKey(0, lambda x,y : x + y, lambda x,y : x + y)
+# ('key1', Iterable(val1,val2, val3...))
+.mapValues(lambda x: round(x))
+.sortBy(lambda x: x[1], ascending=True)
+#.map(lambda x: x[0] + "," + str(x[1]))
+)
+
+
+
+# Joining Datasets
+productRDD = getRDDFromFile(productFile)
+productPairRDD = productRDD.map(lambda x : (x[0], (x[1], x[2])))
+productSummaryRDD = orderdetailRDD5.leftOuterJoin(productPairRDD)
+# orderdetailRDD3.saveAsTextFile("output/productSummary")
+
+
+
+# Broadcast variable
+productDict = productPairRDD.collectAsMap()
+productBC = spark.sparkContext.broadcast(productDict)
+# orderDetailRDD = [('S24_1937', 28053), ('S24_3969', 29763)]
+# ProductDict = [('S24_2972', ('1982 Lamborghini Diablo', 'Classic Cars'), ('S32_2206', ('1982 Ducati 996 R', 'Motorcycles')))]
+productSummaryRDD1 = orderdetailRDD5.map(lambda x : (x[0], productBC.value[x[0]] , x[1]))
+
+
+
+# use a accumulator variable to count the number of highValue orders (qty >= 50)
+
+
+
+highValueAcc = spark.sparkContext.accumulator(0)
+
+
+
+def incrHighValueAcc (qty) :
+if qty >= 50 :
+highValueAcc.add(1)
+
+
+
+orderdetailRDD.foreach(lambda x : incrHighValueAcc(int(x[2])))
+print(highValueAcc)
+
+
+
+
+print(orderdetailRDD.take(5))
+print(orderdetailRDD5.take(5))
+print(productRDD.take(5))
+print(productSummaryRDD.take(5))
+print(productSummaryRDD1.take(5))
+spark.stop()
